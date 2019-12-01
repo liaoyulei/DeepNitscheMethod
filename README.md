@@ -1,4 +1,4 @@
-# Deep Nitsche Method: Deep Ritz Method with Essential Boundary  
+# Deep Nitsche Method: Deep Ritz Method with Essential Boundary Conditions  
 
 Code require Python >= 3.6 and TensorFlow >= 1.13.  
  
