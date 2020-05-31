@@ -175,6 +175,7 @@ class resnet_ritz:
     def test(self, sess, x):
         return sess.run([self.errl2, self.errh1, self.errh2], feed_dict = {self.x_i: x})
 
+tf.compat.v1.disable_eager_execution()
 net = resnet_ritz(2, 5, 10, "tanh") #dimension, layer, unit
 with tf.compat.v1.Session() as sess:
     sess.run(net.init)

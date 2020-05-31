@@ -131,6 +131,7 @@ class resnet_nitsche:
     def test(self, sess, x):
         return sess.run([self.errl2, self.errh1, self.errh2], feed_dict = {self.x_i: x})
 
+tf.compat.v1.disable_eager_execution()
 net = resnet_nitsche(50, 5, 100, "tanh") #dimension, layer, unit
 with tf.compat.v1.Session() as sess:
     sess.run(net.init)

@@ -123,6 +123,7 @@ class resnet_possion:
     def test(self, sess, x):
         return sess.run([self.errl2, self.errh1, self.errh2], feed_dict = {self.x_i: x})
 
+tf.compat.v1.disable_eager_execution()
 net = resnet_possion(50, 5, 100, "tanh") #d-Dimention l-Layers u-Units
 with tf.compat.v1.Session() as sess:
     sess.run(net.init)
