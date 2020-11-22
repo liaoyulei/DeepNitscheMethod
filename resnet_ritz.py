@@ -1,7 +1,7 @@
 '''
 sys.argv[1]:
-'1' means r^{1/2}\sin(\theta/2)
-'2' means \nm{x}{2}^5
+'1' means \cos(\pi x)\sin(\pi y)
+'2' means \sin(\pi x)\cos(\pi y)
 beta = sys.argv[2]
 '''
 import sys
@@ -24,29 +24,31 @@ class ResNet(tf.keras.Model):
         x = self.fc1(x)
         for i in range(self.layer):
             S = self.resnetlist[2*i](x)
-            S = self.resnetlist[2*i+1](S)
+            S = self.resnetlist[2*i+1](x)
             x += S
         return tf.squeeze(self.fc2(x))
-
+        
     def compute_output_shape(self, input_shape):
         shape = tf.TensorShape(input_shape).as_list()
         return tf.TensorShape(shape[0])
         
-class resnet_ls:
+class resnet_ritz:
     def __init__(self, dimension, layer, unit, activation):
         self.dimension = dimension
         self.layer = layer
         self.unit = unit
-        self.batch = 129
-        self.batch_d = self.batch // (4 * dimension) + 1
+        self.batch = 128
+        self.batch_d = self.batch // (2 * dimension) + 1
         self.net = ResNet(layer, unit, activation)
-        self.x_d = tf.compat.v1.placeholder(tf.float64, (None, dimension))
-        self.x_i = tf.compat.v1.placeholder(tf.float64, (None, dimension))
+        self.x_d = tf.compat.v1.placeholder(tf.float32, (None, dimension))
+        self.x_n = tf.compat.v1.placeholder(tf.float32, (None, dimension))
+        self.x_i = tf.compat.v1.placeholder(tf.float32, (None, dimension))
         output_d = self.net(self.x_d)
+        output_n = self.net(self.x_n)
         output_i = self.net(self.x_i)
         beta = float(sys.argv[2])
-        self.loss_b = 8 * beta * tf.reduce_mean((output_d - self.g_d(self.x_d)) ** 2)
-        self.loss_i = 3 * tf.reduce_mean((self.laplace(output_i, self.x_i) + self.f(self.x_i)) ** 2)
+        self.loss_b = 2 * beta * tf.reduce_mean((output_d - self.g_d(self.x_d)) ** 2) - 2 * tf.reduce_mean(self.g_n(self.x_n) * output_n)
+        self.loss_i = tf.reduce_mean(self.norm2_grad(output_i, self.x_i) / 2 - self.f(self.x_i) * output_i)
         self.loss = self.loss_b + self.loss_i
         self.opt = tf.compat.v1.train.AdamOptimizer(learning_rate = 0.001).minimize(self.loss)
         self.errl2 = self.l2(output_i - self.u(self.x_i), self.x_i) / self.l2(self.u(self.x_i), self.x_i)
@@ -63,24 +65,26 @@ class resnet_ls:
         
     def u(self, x):
         if(sys.argv[1] == '1'):
-            r = tf.sqrt(tf.reduce_sum(x ** 2, axis = 1))
-            return tf.sqrt((r - x[:, 0]) / 2)
+            return tf.cos(np.pi * x[:, 0]) * tf.sin(np.pi * x[:, 1])
         elif(sys.argv[1] == '2'):
-            return tf.reduce_sum(x ** 2, axis = 1) ** 2.5
+            return tf.sin(np.pi * x[:, 0]) * tf.cos(np.pi * x[:, 1])
         else:
-            sys.exit("sys.argv[1] is error.")   
-               
+            sys.exit("sys.argv[1] is error.")
+    
     def f(self, x):
-        if(sys.argv[1] == '1'):
-            return 0
-        elif(sys.argv[1] == '2'):
-            return -5 * (self.dimension + 3) * tf.reduce_sum(x ** 2, axis = 1) ** 1.5
-        else:
-            sys.exit("sys.argv[2] is error.")
+        return np.pi ** 2 * self.dimension * self.u(x)
         
     def g_d(self, x):
         return self.u(x)
-
+        
+    def g_n(self, x):
+        if(sys.argv[1] == '1'):
+            return 0
+        elif(sys.argv[1] == '2'):
+            return -np.pi * tf.cos(np.pi * x[:, 1])
+        else:
+            sys.exit("sys.argv[1] is error.")
+            
     def norm2_grad(self, u, x):
         grad = tf.gradients(u, x)[0]
         return tf.reduce_sum(grad ** 2, axis = 1)
@@ -91,13 +95,13 @@ class resnet_ls:
         for i in range(self.dimension):
             g = tf.gradients(grad[:, i], x)[0]
             ans += g[:, i]
-        return ans   
-
+        return ans
+        
     def l2(self, u, x):
-        return tf.sqrt(3 * tf.reduce_mean(u ** 2))
+        return tf.sqrt(tf.reduce_mean(u ** 2))
         
     def h1(self, u, x):
-        return tf.sqrt(3 * tf.reduce_mean(u ** 2 + self.norm2_grad(u, x)))
+        return tf.sqrt(tf.reduce_mean(u ** 2 + self.norm2_grad(u, x)))
         
     def h2(self, u, x):
         ans = tf.reduce_mean(u ** 2 + self.norm2_grad(u, x))
@@ -105,36 +109,29 @@ class resnet_ls:
         for i in range(self.dimension):
             g = tf.gradients(grad[:, i], x)[0]
             ans += tf.reduce_mean(tf.reduce_sum(g ** 2, axis = 1))
-        return tf.sqrt(3 * ans)
+        return tf.sqrt(ans)
         
     def train(self, sess):
-        x_d = np.random.rand(8*self.batch_d, self.dimension)
-        for i in range(self.dimension):
-            x_d[4*i*self.batch_d: (4*i+1)*self.batch_d, i] = -1.
-            x_d[4*i*self.batch_d: (4*i+1)*self.batch_d, 1-i] -= 1.
-            x_d[(4*i+1)*self.batch_d: (4*i+2)*self.batch_d, i] = -1.
-            x_d[(4*i+2)*self.batch_d: (4*i+3)*self.batch_d, i] = 1.
-            x_d[(4*i+2)*self.batch_d: (4*i+3)*self.batch_d, 1-i] -= 1.
-            x_d[(4*i+3)*self.batch_d: (4*i+4)*self.batch_d, i] = 0.
-        x_i = -np.random.rand(self.batch, self.dimension)
-        x_i[: self.batch//3, 0] += 1.
-        x_i[2*self.batch//3: , 1] += 1.
-        _, summary = sess.run([self.opt, self.merged], feed_dict = {self.x_d: x_d, self.x_i: x_i})
+        x_d = np.random.rand(2 * self.batch_d, self.dimension)
+        x_n = np.random.rand(2 * self.batch_d, self.dimension)
+        x_d[: self.batch_d, 1] = 0.
+        x_d[self.batch_d: , 1] = 1.
+        x_n[: self.batch_d, 0] = 0.
+        x_n[self.batch_d: , 0] = 1.
+        x_i = np.random.rand(self.batch, self.dimension)
+        _, summary = sess.run([self.opt, self.merged], feed_dict = {self.x_d: x_d, self.x_n: x_n, self.x_i: x_i})
         return summary
             
-    def test(self, sess, batch_t):
-        x_i = -np.random.rand(batch_t, self.dimension)
-        x_i[: batch_t//3, 0] += 1.
-        x_i[2*batch_t//3: , 1] += 1.   
-        return sess.run([self.errl2, self.errh1, self.errh2], feed_dict = {self.x_i: x_i})
+    def test(self, sess, x):
+        return sess.run([self.errl2, self.errh1, self.errh2], feed_dict = {self.x_i: x})
 
-net = resnet_ls(2, 5, 10, "tanh") #d-Dimention l-Layers u-Units
+net = resnet_ritz(2, 5, 10, "tanh") #dimension, layer, unit
 with tf.compat.v1.Session() as sess:
     sess.run(net.init)
-    train_writer = tf.compat.v1.summary.FileWriter('logs/rl', sess.graph)
+    train_writer = tf.compat.v1.summary.FileWriter('logs/rr', sess.graph)
     for i in range(50000):
         train_writer.add_summary(net.train(sess), i)
-    errl2, errh1, errh2 = net.test(sess, 999999)
+    errl2, errh1, errh2 = net.test(sess, np.random.rand(1000000, net.dimension))
 print("d = {}, l = {}, u = {}".format(net.dimension, net.layer, net.unit))
 net.net.summary()
 print(sys.argv)
